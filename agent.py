@@ -2,7 +2,8 @@
 Energy & Gas Intelligence Agent
 ================================
 Runs on GitHub Actions — no local machine required.
-Schedule: 10:00 / 16:11 / 18:00 Israel time, 7 days a week.
+Schedule: 10:00 / 13:30 / 18:00 Israel time, 7 days a week.
+Uses Google Gemini API for summarization.
 """
 
 import os
@@ -27,21 +28,15 @@ log = logging.getLogger(__name__)
 IL_TZ = ZoneInfo("Asia/Jerusalem")
 
 GEMINI_API_KEY = os.environ["GEMINI_API_KEY"]
-SENDER_EMAIL      = os.environ.get("SENDER_EMAIL", "")
-RECIPIENTS_HE     = [r for r in os.environ.get("RECIPIENTS_HE", "").split(",") if r.strip()]
-RECIPIENTS_EN     = [r for r in os.environ.get("RECIPIENTS_EN", "").split(",") if r.strip()]
-TELEGRAM_TOKEN    = os.environ.get("TELEGRAM_TOKEN", "")
-TELEGRAM_CHAT_ID  = os.environ.get("TELEGRAM_CHAT_ID", "")
+SENDER_EMAIL   = os.environ.get("SENDER_EMAIL", "")
+RECIPIENTS_HE  = [r for r in os.environ.get("RECIPIENTS_HE", "").split(",") if r.strip()]
+RECIPIENTS_EN  = [r for r in os.environ.get("RECIPIENTS_EN", "").split(",") if r.strip()]
 
 SEND_SLOTS = [
     (10,  0, "עדכון בוקר",   "Morning Update"),
-    (15, 18, "עדכון צהריים", "Midday Update"),
+    (13, 30, "עדכון צהריים", "Midday Update"),
     (18,  0, "סיכום יומי",   "End-of-Day Summary"),
 ]
-
-# ---------------------------------------------------------------------------
-# Tickers
-# ---------------------------------------------------------------------------
 
 TICKERS = [
     {"symbol": "ISRAMCO.TA", "name_he": "ישראמקו נגב",   "name_en": "Isramco Negev",   "currency": "ILS"},
@@ -57,10 +52,6 @@ MARKET_EXTRAS = [
     {"symbol": "USDILS=X", "name_he": "דולר / שקל",        "name_en": "USD / ILS",           "currency": "ILS"},
     {"symbol": "BZ=F",     "name_he": "נפט ברנט ($/חבית)", "name_en": "Brent Crude ($/bbl)", "currency": "USD"},
 ]
-
-# ---------------------------------------------------------------------------
-# Sources
-# ---------------------------------------------------------------------------
 
 SOURCES = [
     {"url": "https://www.magna.isa.gov.il/",                                 "name": 'מאיה (MAGNA)',      "cat": "israel_gas"},
@@ -81,10 +72,6 @@ SOURCES = [
     {"url": "https://www.calcalist.co.il/markets/",                           "name": "כלכליסט",           "cat": "media"},
 ]
 
-# ---------------------------------------------------------------------------
-# Data classes
-# ---------------------------------------------------------------------------
-
 @dataclass
 class Article:
     title: str
@@ -102,10 +89,6 @@ class TickerData:
     price: float
     change_pct: float
     currency: str
-
-# ---------------------------------------------------------------------------
-# Scraper
-# ---------------------------------------------------------------------------
 
 async def fetch_source(client: httpx.AsyncClient, source: dict) -> list[Article]:
     articles: list[Article] = []
@@ -151,9 +134,6 @@ async def scrape_all(prev_hashes: set[str]) -> list[Article]:
     log.info(f"Scraped {len(all_articles)} total, {len(new_articles)} new")
     return new_articles
 
-# ---------------------------------------------------------------------------
-# Market data
-# ---------------------------------------------------------------------------
 
 async def fetch_ticker(client: httpx.AsyncClient, t: dict) -> Optional[TickerData]:
     url = f"https://query1.finance.yahoo.com/v8/finance/chart/{t['symbol']}?interval=1d&range=2d"
@@ -180,9 +160,6 @@ async def fetch_all_tickers() -> tuple[list[TickerData], list[TickerData]]:
         )
     return [t for t in rt if t], [t for t in rm if t]
 
-# ---------------------------------------------------------------------------
-# Claude summarizer
-# ---------------------------------------------------------------------------
 
 CAT_LABELS = {
     "israel_gas":      ("ישראל — גז טבעי",  "Israel — Natural Gas"),
@@ -221,32 +198,67 @@ def build_prompt(articles: list[Article], lang: str, slot_label: str, prev_hashe
             lines.append(f"[{status}] {a.title}\nURL: {a.url}\nSource: {a.source_name}\nSnippet: {a.snippet}\n")
     body = "\n".join(lines)
     if lang == "he":
-        return f"""אתה אנליסט אנרגיה בכיר. סכם את הפרסומים הבאים בפורמט JSON בלבד.
+        return f"""אתה אנליסט אנרגיה בכיר. סכם את הפרסומים הבאים בפורמט JSON בלבד — ללא markdown, ללא הסברים.
 
-{{"executive_summary": "3-4 משפטים","items": [{{"category": "israel_gas|israel_electric|international|analysis|media","badge": "חדש|עדכון|רגולציה|ניתוח|פיננסי","company": "שם","title": "כותרת","summary": "2-3 משפטים","delta": "מה השתנה","url": "כתובת","source_name": "מקור"}}]}}
+{{
+  "executive_summary": "3-4 משפטים על הנושאים החשובים ביותר",
+  "items": [
+    {{
+      "category": "israel_gas|israel_electric|international|analysis|media",
+      "badge": "חדש|עדכון|רגולציה|ניתוח|פיננסי",
+      "company": "שם החברה",
+      "title": "כותרת תמציתית",
+      "summary": "2-3 משפטים",
+      "delta": "מה השתנה לעומת קודם",
+      "url": "כתובת המקור",
+      "source_name": "שם המקור"
+    }}
+  ]
+}}
 
-פרסומים ({slot_label}):\n{body}\n\nJSON בלבד."""
+פרסומים ({slot_label}):
+{body}
+
+החזר JSON תקני בלבד."""
     else:
-        return f"""You are a senior energy analyst. Summarize in valid JSON only.
+        return f"""You are a senior energy analyst. Summarize the following in valid JSON only — no markdown, no explanations.
 
-{{"executive_summary": "3-4 sentences","items": [{{"category": "israel_gas|israel_electric|international|analysis|media","badge": "New|Update|Regulatory|Analysis|Financial","company": "name","title": "headline","summary": "2-3 sentences","delta": "what changed","url": "url","source_name": "source"}}]}}
+{{
+  "executive_summary": "3-4 sentences on the most important developments",
+  "items": [
+    {{
+      "category": "israel_gas|israel_electric|international|analysis|media",
+      "badge": "New|Update|Regulatory|Analysis|Financial",
+      "company": "Company name",
+      "title": "Concise headline",
+      "summary": "2-3 sentences",
+      "delta": "What changed vs. previous",
+      "url": "Source URL",
+      "source_name": "Source name"
+    }}
+  ]
+}}
 
-Publications ({slot_label}):\n{body}\n\nJSON only."""
+Publications ({slot_label}):
+{body}
+
+Return valid JSON only."""
 
 
-def summarize(articles, lang, slot_label, prev_hashes):
+def summarize(articles: list[Article], lang: str, slot_label: str, prev_hashes: set[str]) -> dict:
     client   = genai.Client(api_key=GEMINI_API_KEY)
-response = client.models.generate_content(model="gemini-2.0-flash", contents=prompt)
-raw = response.text.strip().replace("```json","").replace("```","").strip()
+    prompt   = build_prompt(articles, lang, slot_label, prev_hashes)
+    response = client.models.generate_content(
+        model="gemini-2.0-flash",
+        contents=prompt,
+    )
+    raw = response.text.strip().replace("```json", "").replace("```", "").strip()
     try:
         return json.loads(raw)
     except json.JSONDecodeError:
-        log.error("JSON parse error")
-        return {"executive_summary": "שגיאה" if lang=="he" else "Error", "items": []}
+        log.error(f"JSON parse error. Raw: {raw[:300]}")
+        return {"executive_summary": "שגיאה בעיבוד" if lang == "he" else "Processing error", "items": []}
 
-# ---------------------------------------------------------------------------
-# HTML email builder
-# ---------------------------------------------------------------------------
 
 def fmt_price(t: TickerData) -> str:
     if t.currency == "ILS":
@@ -259,11 +271,12 @@ def ticker_cell(t: TickerData, lang: str) -> str:
     color = "#0F6E56" if up else "#993C1D"
     arrow = "&#9650;" if up else "&#9660;"
     name  = t.name_he if lang == "he" else t.name_en
-    return f"""<td style="padding:4px"><div style="background:#fff;border:0.5px solid #ddd;border-radius:7px;padding:8px 10px;min-width:88px">
-        <div style="font-size:10px;color:#666;margin-bottom:2px">{name}</div>
-        <div style="font-size:12px;font-weight:bold;color:#1a1a1a">{fmt_price(t)}</div>
-        <div style="font-size:10px;font-weight:bold;color:{color}">{arrow} {abs(t.change_pct):.2f}%</div>
-    </div></td>"""
+    return (f'<td style="padding:4px"><div style="background:#fff;border:0.5px solid #ddd;'
+            f'border-radius:7px;padding:8px 10px;min-width:88px">'
+            f'<div style="font-size:10px;color:#666;margin-bottom:2px">{name}</div>'
+            f'<div style="font-size:12px;font-weight:bold;color:#1a1a1a">{fmt_price(t)}</div>'
+            f'<div style="font-size:10px;font-weight:bold;color:{color}">{arrow} {abs(t.change_pct):.2f}%</div>'
+            f'</div></td>')
 
 
 def build_email(summary: dict, tickers: list[TickerData], extras: list[TickerData],
@@ -273,57 +286,61 @@ def build_email(summary: dict, tickers: list[TickerData], extras: list[TickerDat
     date_str = now.strftime("%d.%m.%Y") if he else now.strftime("%b %d, %Y")
     time_str = now.strftime("%H:%M")
     n        = len(summary.get("items", []))
-    n_new    = len([i for i in summary.get("items",[]) if i.get("badge") in ("חדש","New")])
-    n_ent    = len(set(i.get("company","") for i in summary.get("items",[])))
+    n_new    = len([i for i in summary.get("items", []) if i.get("badge") in ("חדש", "New")])
+    n_ent    = len(set(i.get("company", "") for i in summary.get("items", [])))
 
-    sources_line = ('מאיה · נתג"ז · רשות החשמל · נגה · BDO · איגוד הגז · גלובס · כלכליסט · Reuters · S&P Global · MEES · שברון · SEC'
-                    if he else "MAGNA · Natgas Auth · Electricity Auth · NOGA · BDO · Gas Assoc · Globes · Reuters · S&P Global · MEES · Chevron · SEC")
+    sources_line = ('מאיה · נתג"ז · רשות החשמל · נגה · BDO · איגוד הגז · גלובס · כלכליסט · Reuters · MEES · שברון'
+                    if he else "MAGNA · Natgas Auth · Electricity Auth · NOGA · BDO · Globes · Reuters · MEES · Chevron")
 
-    disc = ("סיכום זה נוצר באמצעות בינה מלאכותית. המידע למטרות מודיעין עסקי בלבד ואינו ייעוץ פיננסי. יש לאמת מול המקור המקורי."
-            if he else "AI-generated from public sources. For business intelligence only. Not financial advice. Verify before decisions.")
+    disc = ("סיכום זה נוצר באמצעות בינה מלאכותית (Gemini). המידע למטרות מודיעין עסקי בלבד ואינו ייעוץ פיננסי. יש לאמת מול המקור המקורי."
+            if he else "AI-generated (Gemini) from public sources. For business intelligence only. Not financial advice. Verify before decisions.")
 
     grouped: dict[str, list] = {}
     for item in summary.get("items", []):
-        grouped.setdefault(item.get("category","media"), []).append(item)
+        grouped.setdefault(item.get("category", "media"), []).append(item)
 
     sections = ""
     auto_m = "margin-right:auto" if he else "margin-left:auto"
     for cat, items in grouped.items():
         he_lbl, en_lbl = CAT_LABELS.get(cat, (cat, cat))
-        dot  = CAT_DOT.get(cat, "#888")
-        lbl  = he_lbl if he else en_lbl
-        cnt  = f"{len(items)} פרסומים" if he else f"{len(items)} items"
+        dot = CAT_DOT.get(cat, "#888")
+        lbl = he_lbl if he else en_lbl
+        cnt = f"{len(items)} פרסומים" if he else f"{len(items)} items"
         rows = ""
         for item in items:
-            bg, fg = BADGE_COLORS.get(item.get("badge",""), ("#eee","#333"))
+            bg, fg    = BADGE_COLORS.get(item.get("badge", ""), ("#eee", "#333"))
             delta_lbl = "מה השתנה" if he else "What changed"
             src_lbl   = "מקור" if he else "Source"
-            rows += f"""<div style="margin-bottom:12px;padding-bottom:12px;border-bottom:0.5px solid #eee">
-              <div style="display:flex;align-items:flex-start;gap:6px;margin-bottom:4px;{rtl}">
-                <span style="font-size:9px;padding:2px 7px;border-radius:7px;font-weight:bold;background:{bg};color:{fg};flex-shrink:0;margin-top:2px">{item.get('badge','')}</span>
-                <strong style="font-size:12px;line-height:1.4"><a href="{item.get('url','#')}" style="color:#1a1a1a;text-decoration:none;border-bottom:1px solid #bbb">{item.get('title','')}</a></strong>
-                <span style="font-size:10px;color:#888;{auto_m}">{item.get('company','')}</span>
-              </div>
-              <p style="font-size:11px;color:#444;line-height:1.6;margin:0 0 6px">{item.get('summary','')}</p>
-              <div style="display:flex;gap:5px;background:#f5f4f0;border-radius:7px;padding:6px 9px;margin-bottom:6px">
-                <div style="width:3px;background:#5DCAA5;border-radius:2px;flex-shrink:0"></div>
-                <span style="font-size:10px;color:#444;line-height:1.5"><strong style="color:#1a1a1a">{delta_lbl}:</strong> {item.get('delta','')}</span>
-              </div>
-              <a href="{item.get('url','#')}" style="font-size:10px;color:#185FA5;text-decoration:none">{src_lbl}: {item.get('source_name','')} &#8599;</a>
-            </div>"""
-        sections += f"""<div style="margin:0 24px 14px;{rtl}">
-          <div style="display:flex;align-items:center;gap:7px;border-bottom:0.5px solid #ddd;padding-bottom:7px;margin-bottom:10px">
-            <span style="width:7px;height:7px;border-radius:50%;background:{dot};display:inline-block;flex-shrink:0"></span>
-            <strong style="font-size:12px;color:#1a1a1a">{lbl}</strong>
-            <span style="font-size:10px;color:#888;{auto_m}">{cnt}</span>
-          </div>{rows}</div>
-        <div style="height:0.5px;background:#eee;margin:0 24px 14px"></div>"""
+            rows += (
+                f'<div style="margin-bottom:12px;padding-bottom:12px;border-bottom:0.5px solid #eee">'
+                f'<div style="display:flex;align-items:flex-start;gap:6px;margin-bottom:4px;{rtl}">'
+                f'<span style="font-size:9px;padding:2px 7px;border-radius:7px;font-weight:bold;background:{bg};color:{fg};flex-shrink:0;margin-top:2px">{item.get("badge","")}</span>'
+                f'<strong style="font-size:12px;line-height:1.4"><a href="{item.get("url","#")}" style="color:#1a1a1a;text-decoration:none;border-bottom:1px solid #bbb">{item.get("title","")}</a></strong>'
+                f'<span style="font-size:10px;color:#888;{auto_m}">{item.get("company","")}</span>'
+                f'</div>'
+                f'<p style="font-size:11px;color:#444;line-height:1.6;margin:0 0 6px">{item.get("summary","")}</p>'
+                f'<div style="display:flex;gap:5px;background:#f5f4f0;border-radius:7px;padding:6px 9px;margin-bottom:6px">'
+                f'<div style="width:3px;background:#5DCAA5;border-radius:2px;flex-shrink:0"></div>'
+                f'<span style="font-size:10px;color:#444;line-height:1.5"><strong style="color:#1a1a1a">{delta_lbl}:</strong> {item.get("delta","")}</span>'
+                f'</div>'
+                f'<a href="{item.get("url","#")}" style="font-size:10px;color:#185FA5;text-decoration:none">{src_lbl}: {item.get("source_name","")} &#8599;</a>'
+                f'</div>'
+            )
+        sections += (
+            f'<div style="margin:0 24px 14px;{rtl}">'
+            f'<div style="display:flex;align-items:center;gap:7px;border-bottom:0.5px solid #ddd;padding-bottom:7px;margin-bottom:10px">'
+            f'<span style="width:7px;height:7px;border-radius:50%;background:{dot};display:inline-block;flex-shrink:0"></span>'
+            f'<strong style="font-size:12px;color:#1a1a1a">{lbl}</strong>'
+            f'<span style="font-size:10px;color:#888;{auto_m}">{cnt}</span>'
+            f'</div>{rows}</div>'
+            f'<div style="height:0.5px;background:#eee;margin:0 24px 14px"></div>'
+        )
 
     ticker_rows = ""
     cells = ""
     for i, t in enumerate(tickers):
         cells += ticker_cell(t, lang)
-        if (i+1) % 3 == 0:
+        if (i + 1) % 3 == 0:
             ticker_rows += f"<tr>{cells}</tr>"
             cells = ""
     if cells:
@@ -335,46 +352,46 @@ def build_email(summary: dict, tickers: list[TickerData], extras: list[TickerDat
     mkt_label  = "שערי שוק" if he else "Market data"
     disc_label = "גילוי נאות — AI" if he else "AI Disclosure"
     cta_txt    = "לפלטפורמה המלאה &#8599;" if he else "Full platform &#8599;"
-    footer_txt = f"אוטומטי · {slot_label} {time_str} · 7 ימים · ישראל, מצרים, ירדן, שברון" if he else f"Automated · {slot_label} {time_str} · 7 days · Israel, Egypt, Jordan, Chevron"
+    footer_txt = (f"אוטומטי · {slot_label} {time_str} · 7 ימים · ישראל, מצרים, ירדן, שברון"
+                  if he else f"Automated · {slot_label} {time_str} · 7 days · Israel, Egypt, Jordan, Chevron")
 
-    return f"""<!DOCTYPE html><html><head><meta charset="utf-8"></head>
-<body style="margin:0;padding:20px;background:#f0efe9;font-family:Arial,Helvetica,sans-serif;font-size:13px">
-<div style="max-width:640px;margin:0 auto;background:#fff;border:0.5px solid #ccc;border-radius:12px;overflow:hidden;color:#1a1a1a;{rtl}">
-  <div style="background:#042C53;padding:22px 28px 16px">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-      <span style="font-size:11px;color:#B5D4F4;font-weight:500">{'סיכום אנרגיה וגז · הנהלה' if he else 'Energy & Gas Intelligence · Executive'}</span>
-      <span style="font-size:10px;background:rgba(255,255,255,.12);color:#85B7EB;padding:3px 9px;border-radius:9px">{slot_label} · {time_str} · {date_str}</span>
-    </div>
-    <div style="font-size:18px;font-weight:bold;color:#fff;margin-bottom:3px">{title_str}</div>
-    <div style="font-size:10px;color:#378ADD;margin-top:5px">{sources_line}</div>
-  </div>
-  <div style="margin:16px 24px;background:#EBF4FC;border:0.5px solid #85B7EB;border-radius:8px;padding:12px 14px">
-    <div style="font-size:10px;font-weight:bold;color:#185FA5;letter-spacing:.5px;margin-bottom:5px;text-transform:uppercase">{exec_label}</div>
-    <div style="font-size:12px;color:#0C447C;line-height:1.65">{summary.get('executive_summary','')}</div>
-  </div>
-  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:0 24px 16px">
-    <div style="background:#f5f4f0;border-radius:7px;padding:9px 10px;text-align:center"><div style="font-size:20px;font-weight:bold">{n}</div><div style="font-size:10px;color:#666">{'פרסומים' if he else 'Publications'}</div></div>
-    <div style="background:#f5f4f0;border-radius:7px;padding:9px 10px;text-align:center"><div style="font-size:20px;font-weight:bold">{n_new}</div><div style="font-size:10px;color:#666">{'חדשים' if he else 'New'}</div></div>
-    <div style="background:#f5f4f0;border-radius:7px;padding:9px 10px;text-align:center"><div style="font-size:20px;font-weight:bold">{n_ent}</div><div style="font-size:10px;color:#666">{'גופים' if he else 'Entities'}</div></div>
-  </div>
-  {sections}
-  <a href="#" style="display:block;margin:0 24px 16px;background:#042C53;color:#fff;text-align:center;padding:10px;border-radius:8px;font-size:12px;font-weight:bold;text-decoration:none">{cta_txt}</a>
-  <div style="background:#f5f4f0;border-top:0.5px solid #ddd;padding:12px 24px">
-    <div style="font-size:10px;color:#888;margin-bottom:8px;font-weight:bold">{mkt_label} · {time_str}</div>
-    <table style="width:100%;border-collapse:collapse">{ticker_rows}{extra_row}</table>
-  </div>
-  <div style="background:#fff3cd;border:0.5px solid #ffc107;border-radius:7px;margin:10px 24px;padding:10px 12px">
-    <div style="font-size:9px;font-weight:bold;color:#856404;letter-spacing:.4px;margin-bottom:3px;text-transform:uppercase">{disc_label}</div>
-    <div style="font-size:10px;color:#5a4500;line-height:1.55">{disc}</div>
-  </div>
-  <div style="background:#f5f4f0;border-top:0.5px solid #ddd;padding:12px 24px;text-align:center">
-    <div style="font-size:10px;color:#888">{footer_txt}</div>
-  </div>
-</div></body></html>"""
+    return (
+        f'<!DOCTYPE html><html><head><meta charset="utf-8"></head>'
+        f'<body style="margin:0;padding:20px;background:#f0efe9;font-family:Arial,Helvetica,sans-serif;font-size:13px">'
+        f'<div style="max-width:640px;margin:0 auto;background:#fff;border:0.5px solid #ccc;border-radius:12px;overflow:hidden;color:#1a1a1a;{rtl}">'
+        f'<div style="background:#042C53;padding:22px 28px 16px">'
+        f'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">'
+        f'<span style="font-size:11px;color:#B5D4F4;font-weight:500">{"סיכום אנרגיה וגז · הנהלה" if he else "Energy & Gas Intelligence · Executive"}</span>'
+        f'<span style="font-size:10px;background:rgba(255,255,255,.12);color:#85B7EB;padding:3px 9px;border-radius:9px">{slot_label} · {time_str} · {date_str}</span>'
+        f'</div>'
+        f'<div style="font-size:18px;font-weight:bold;color:#fff;margin-bottom:3px">{title_str}</div>'
+        f'<div style="font-size:10px;color:#378ADD;margin-top:5px">{sources_line}</div>'
+        f'</div>'
+        f'<div style="margin:16px 24px;background:#EBF4FC;border:0.5px solid #85B7EB;border-radius:8px;padding:12px 14px">'
+        f'<div style="font-size:10px;font-weight:bold;color:#185FA5;letter-spacing:.5px;margin-bottom:5px;text-transform:uppercase">{exec_label}</div>'
+        f'<div style="font-size:12px;color:#0C447C;line-height:1.65">{summary.get("executive_summary","")}</div>'
+        f'</div>'
+        f'<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:0 24px 16px">'
+        f'<div style="background:#f5f4f0;border-radius:7px;padding:9px 10px;text-align:center"><div style="font-size:20px;font-weight:bold">{n}</div><div style="font-size:10px;color:#666">{"פרסומים" if he else "Publications"}</div></div>'
+        f'<div style="background:#f5f4f0;border-radius:7px;padding:9px 10px;text-align:center"><div style="font-size:20px;font-weight:bold">{n_new}</div><div style="font-size:10px;color:#666">{"חדשים" if he else "New"}</div></div>'
+        f'<div style="background:#f5f4f0;border-radius:7px;padding:9px 10px;text-align:center"><div style="font-size:20px;font-weight:bold">{n_ent}</div><div style="font-size:10px;color:#666">{"גופים" if he else "Entities"}</div></div>'
+        f'</div>'
+        f'{sections}'
+        f'<a href="#" style="display:block;margin:0 24px 16px;background:#042C53;color:#fff;text-align:center;padding:10px;border-radius:8px;font-size:12px;font-weight:bold;text-decoration:none">{cta_txt}</a>'
+        f'<div style="background:#f5f4f0;border-top:0.5px solid #ddd;padding:12px 24px">'
+        f'<div style="font-size:10px;color:#888;margin-bottom:8px;font-weight:bold">{mkt_label} · {time_str}</div>'
+        f'<table style="width:100%;border-collapse:collapse">{ticker_rows}{extra_row}</table>'
+        f'</div>'
+        f'<div style="background:#fff3cd;border:0.5px solid #ffc107;border-radius:7px;margin:10px 24px;padding:10px 12px">'
+        f'<div style="font-size:9px;font-weight:bold;color:#856404;letter-spacing:.4px;margin-bottom:3px;text-transform:uppercase">{disc_label}</div>'
+        f'<div style="font-size:10px;color:#5a4500;line-height:1.55">{disc}</div>'
+        f'</div>'
+        f'<div style="background:#f5f4f0;border-top:0.5px solid #ddd;padding:12px 24px;text-align:center">'
+        f'<div style="font-size:10px;color:#888">{footer_txt}</div>'
+        f'</div>'
+        f'</div></body></html>'
+    )
 
-# ---------------------------------------------------------------------------
-# State (GitHub Actions — uses file in repo or temp)
-# ---------------------------------------------------------------------------
 
 STATE_FILE = "/tmp/energy_agent_state.json"
 
@@ -389,9 +406,6 @@ def save_state(hashes: set[str]) -> None:
     with open(STATE_FILE, "w") as f:
         json.dump({"hashes": list(hashes)[-5000:], "updated": datetime.now().isoformat()}, f)
 
-# ---------------------------------------------------------------------------
-# Orchestrator
-# ---------------------------------------------------------------------------
 
 async def run_slot(label_he: str, label_en: str) -> None:
     now = datetime.now(IL_TZ)
@@ -414,12 +428,9 @@ async def run_slot(label_he: str, label_en: str) -> None:
     html_en = build_email(summary_en, tickers, extras, "en", label_en, now)
 
     date_str = now.strftime("%d.%m.%Y")
-
-    # Send Gmail
     send_email_gmail(f"סיכום אנרגיה וגז | {label_he} | {date_str}", html_he, RECIPIENTS_HE)
     send_email_gmail(f"Energy & Gas Intelligence | {label_en} | {now.strftime('%b %d, %Y')}", html_en, RECIPIENTS_EN)
 
-    # Send Telegram (Hebrew)
     await send_telegram(summary_he, tickers, extras, label_he, "he")
 
     save_state(prev_hashes | {a.content_hash for a in articles})
@@ -436,4 +447,4 @@ async def main() -> None:
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    asyncio.run(run_slot("בדיקה", "Test"))

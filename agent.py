@@ -17,7 +17,7 @@ from dataclasses import dataclass
 
 import httpx
 from bs4 import BeautifulSoup
-from anthropic import Anthropic
+import google.generativeai as genai
 from gmail_sender import send_email_gmail
 from telegram_sender import send_telegram
 
@@ -26,7 +26,7 @@ log = logging.getLogger(__name__)
 
 IL_TZ = ZoneInfo("Asia/Jerusalem")
 
-ANTHROPIC_API_KEY = os.environ["ANTHROPIC_API_KEY"]
+GEMINI_API_KEY = os.environ["GEMINI_API_KEY"]
 SENDER_EMAIL      = os.environ.get("SENDER_EMAIL", "")
 RECIPIENTS_HE     = [r for r in os.environ.get("RECIPIENTS_HE", "").split(",") if r.strip()]
 RECIPIENTS_EN     = [r for r in os.environ.get("RECIPIENTS_EN", "").split(",") if r.strip()]
@@ -234,15 +234,12 @@ def build_prompt(articles: list[Article], lang: str, slot_label: str, prev_hashe
 Publications ({slot_label}):\n{body}\n\nJSON only."""
 
 
-def summarize(articles: list[Article], lang: str, slot_label: str, prev_hashes: set[str]) -> dict:
-    client   = Anthropic(api_key=ANTHROPIC_API_KEY)
+def summarize(articles, lang, slot_label, prev_hashes):
+    genai.configure(api_key=GEMINI_API_KEY)
+    model    = genai.GenerativeModel("gemini-1.5-flash")
     prompt   = build_prompt(articles, lang, slot_label, prev_hashes)
-    response = client.messages.create(
-        model="claude-sonnet-4-20250514",
-        max_tokens=4000,
-        messages=[{"role": "user", "content": prompt}],
-    )
-    raw = response.content[0].text.strip().replace("```json","").replace("```","").strip()
+    response = model.generate_content(prompt)
+    raw = response.text.strip().replace("```json","").replace("```","").strip()
     try:
         return json.loads(raw)
     except json.JSONDecodeError:

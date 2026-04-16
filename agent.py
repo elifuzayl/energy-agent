@@ -2,7 +2,7 @@
 Energy & Gas Intelligence Agent
 ================================
 Runs on GitHub Actions — no local machine required.
-Schedule: 10:00 / 15:18 / 18:00 Israel time, 7 days a week.
+Schedule: 10:00 / 16:11 / 18:00 Israel time, 7 days a week.
 """
 
 import os

@@ -17,7 +17,7 @@ from dataclasses import dataclass
 
 import httpx
 from bs4 import BeautifulSoup
-import google.generativeai as genai
+from google import genai
 from gmail_sender import send_email_gmail
 from telegram_sender import send_telegram
 
@@ -235,11 +235,9 @@ Publications ({slot_label}):\n{body}\n\nJSON only."""
 
 
 def summarize(articles, lang, slot_label, prev_hashes):
-    genai.configure(api_key=GEMINI_API_KEY)
-    model    = genai.GenerativeModel("gemini-1.5-flash")
-    prompt   = build_prompt(articles, lang, slot_label, prev_hashes)
-    response = model.generate_content(prompt)
-    raw = response.text.strip().replace("```json","").replace("```","").strip()
+    client   = genai.Client(api_key=GEMINI_API_KEY)
+response = client.models.generate_content(model="gemini-2.0-flash", contents=prompt)
+raw = response.text.strip().replace("```json","").replace("```","").strip()
     try:
         return json.loads(raw)
     except json.JSONDecodeError:

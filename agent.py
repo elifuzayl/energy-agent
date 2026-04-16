@@ -2,7 +2,7 @@
 Energy & Gas Intelligence Agent
 ================================
 Runs on GitHub Actions — no local machine required.
-Schedule: 10:00 / 15:10 / 18:00 Israel time, 7 days a week.
+Schedule: 10:00 / 15:18 / 18:00 Israel time, 7 days a week.
 """
 
 import os
@@ -35,7 +35,7 @@ TELEGRAM_CHAT_ID  = os.environ.get("TELEGRAM_CHAT_ID", "")
 
 SEND_SLOTS = [
     (10,  0, "עדכון בוקר",   "Morning Update"),
-    (13, 30, "עדכון צהריים", "Midday Update"),
+    (15, 18, "עדכון צהריים", "Midday Update"),
     (18,  0, "סיכום יומי",   "End-of-Day Summary"),
 ]
 

@@ -2,7 +2,7 @@
 Energy & Gas Intelligence Agent
 ================================
 Runs on GitHub Actions — no local machine required.
-Schedule: 10:00 / 13:30 / 18:00 Israel time, 7 days a week.
+Schedule: 10:00 / 15:10 / 18:00 Israel time, 7 days a week.
 """
 
 import os
@@ -441,4 +441,4 @@ async def main() -> None:
 
 
 if __name__ == "__main__":
-    asyncio.run(run_slot("בדיקה", "Test"))
+    asyncio.run(main())

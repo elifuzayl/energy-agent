@@ -27,7 +27,9 @@ log = logging.getLogger(__name__)
 
 IL_TZ = ZoneInfo("Asia/Jerusalem")
 
-GEMINI_API_KEY = os.environ["GEMINI_API_KEY"]
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
+if not GEMINI_API_KEY:
+    raise ValueError(f"GEMINI_API_KEY not set. Available env vars: {list(os.environ.keys())}")
 SENDER_EMAIL   = os.environ.get("SENDER_EMAIL", "")
 RECIPIENTS_HE  = [r for r in os.environ.get("RECIPIENTS_HE", "").split(",") if r.strip()]
 RECIPIENTS_EN  = [r for r in os.environ.get("RECIPIENTS_EN", "").split(",") if r.strip()]

@@ -1,0 +1,37 @@
+name: Energy Agent
+
+on:
+  schedule:
+    - cron: '0 7 * * *'
+    - cron: '30 10 * * *'
+    - cron: '0 15 * * *'
+  workflow_dispatch:
+
+jobs:
+  run-agent:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Write Gmail token
+        run: echo '${{ secrets.GMAIL_TOKEN_JSON }}' > token.json
+
+      - name: Run agent
+        env:
+          GEMINI_API_KEY:   ${{ secrets.GEMINI_API_KEY }}
+          TELEGRAM_TOKEN:   ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          RECIPIENTS_HE:    ${{ secrets.RECIPIENTS_HE }}
+          RECIPIENTS_EN:    ${{ secrets.RECIPIENTS_EN }}
+          SENDER_EMAIL:     ${{ secrets.SENDER_EMAIL }}
+        run: python agent.py

@@ -41,13 +41,13 @@ SEND_SLOTS = [
 ]
 
 TICKERS = [
-    {"symbol": "ISRAMCO.TA", "name_he": "ישראמקו נגב",   "name_en": "Isramco Negev",   "currency": "ILS"},
+    {"symbol": "ISRA.TA", "name_he": "ישראמקו נגב",   "name_en": "Isramco Negev",   "currency": "ILS"},
     {"symbol": "TMRP.TA",    "name_he": "תמר פטרוליום",  "name_en": "Tamar Petroleum",  "currency": "ILS"},
     {"symbol": "NWMD.TA",    "name_he": "ניומד אנרגי",   "name_en": "Newmed Energy",    "currency": "ILS"},
-    {"symbol": "RATIO.TA",   "name_he": "רציו פטרוליום", "name_en": "Ratio Petroleum",  "currency": "ILS"},
+    {"symbol": "RATI.TA",   "name_he": "רציו פטרוליום", "name_en": "Ratio Petroleum",  "currency": "ILS"},
     {"symbol": "DLEKG.TA",   "name_he": "קבוצת דלק",     "name_en": "Delek Group",      "currency": "ILS"},
     {"symbol": "CVX",        "name_he": "שברון",          "name_en": "Chevron (CVX)",    "currency": "USD"},
-    {"symbol": "ENOG",       "name_he": "אנרגיאן",       "name_en": "Energean (ENOG)",  "currency": "USD"},
+    {"symbol": "ENOG.L",       "name_he": "אנרגיאן",       "name_en": "Energean (ENOG.L)",  "currency": "USD"},
 ]
 
 MARKET_EXTRAS = [

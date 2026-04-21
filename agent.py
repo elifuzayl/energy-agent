@@ -251,7 +251,7 @@ def summarize(articles: list[Article], lang: str, slot_label: str, prev_hashes: 
     client   = genai.Client(api_key=GEMINI_API_KEY)
     prompt   = build_prompt(articles, lang, slot_label, prev_hashes)
     response = client.models.generate_content(
-        model="gemini-2.0-flash",
+        model="gemini-1.5-flash-8b",
         contents=prompt,
     )
     raw = response.text.strip().replace("```json", "").replace("```", "").strip()
